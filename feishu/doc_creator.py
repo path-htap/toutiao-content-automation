@@ -117,8 +117,10 @@ class FeishuDocCreator:
             logger.info(f"飞书文档创建成功: {title}")
             logger.info(f"文档链接: {doc_url}")
 
-            # 第二步：写入内容（使用 raw_content 方式批量写入）
-            # 构造文档内容：副标题 + 摘要 + 正文 + 结语
+            # 第二步：设置权限（企业内可阅读，否则用户打不开）
+            self._set_doc_permission(document_id)
+
+            # 第三步：写入内容
             blocks = self._build_blocks(article)
             self._write_blocks(document_id, blocks)
 
@@ -280,6 +282,37 @@ class FeishuDocCreator:
                 return False
         except Exception as e:
             logger.error(f"文档内容写入异常: {e}")
+            return False
+
+    def _set_doc_permission(self, document_id: str) -> bool:
+        """设置文档权限为企业内可阅读
+
+        否则创建的文档只有机器人自己能访问，用户打不开。
+        """
+        try:
+            resp = requests.patch(
+                f"{FEISHU_OPEN_API}/drive/v1/permissions/{document_id}/public",
+                headers=self._headers(),
+                params={"type": "docx"},
+                json={
+                    "link_share_entity": "tenant_viewable",  # 企业内可阅读
+                    "permission_entity": "view",
+                    "comment_entity": "open",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data.get("code") == 0:
+                logger.info(f"文档权限设置成功: 企业内可阅读")
+                return True
+            else:
+                logger.warning(f"文档权限设置失败: {data}")
+                # 权限设置失败不影响主流程，至少文档创建成功了
+                return False
+        except Exception as e:
+            logger.warning(f"文档权限设置异常: {e}")
             return False
 
     def create_summary_doc(self, articles: list, report: dict = None) -> str:
