@@ -335,6 +335,14 @@ def run_pipeline(start_phase: int = 1, force: bool = False):
     start_time = datetime.now(tz)
     logger.info(f"流水线启动 - {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
+    # 发送启动通知（让用户知道流水线开始运行了）
+    try:
+        from feishu.notify import FeishuNotifier
+        notifier = FeishuNotifier()
+        notifier.send_text(f"🚀 今日头条文案自动化流水线已启动\n时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n开始阶段: Phase {start_phase}")
+    except Exception as e:
+        logger.warning(f"发送启动通知失败: {e}")
+
     # 断点续跑：检查上次运行状态
     state_file = OUTPUT_DIR / "pipeline_state.json"
     if not force and state_file.exists():
