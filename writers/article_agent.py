@@ -155,7 +155,7 @@ class ArticleAgent:
             文章列表
         """
         if styles is None:
-            styles = ["news", "opinion"]
+            styles = ["news"]  # 默认只生成资讯速递型，速度快
 
         articles = []
         client = self._get_client()

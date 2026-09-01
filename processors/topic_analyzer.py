@@ -11,10 +11,10 @@ from datetime import datetime, timezone, timedelta
 logger = logging.getLogger(__name__)
 
 # 默认 system prompt
-ANALYSIS_PROMPT = """你是一位资深的内容策划编辑。请分析以下热点数据，为每个热点生成 2-3 个不同角度的选题。
+ANALYSIS_PROMPT = """你是一位资深的内容策划编辑。请分析以下热点数据，为每个热点生成 1 个最佳角度的选题。
 
 要求:
-1. 选题角度要差异化：资讯速递型 / 深度评论型 / 盘点列表型 / 故事叙事型
+1. 选择最适合今日头条的角度，资讯速递型优先
 2. 每个选题包含: 标题、摘要(≤50字)、关键词、目标受众、文案类型、热度评分(1-10)
 3. 标题要有吸引力但不过度标题党
 4. 返回 JSON 格式
@@ -61,7 +61,7 @@ class TopicAnalyzer:
             logger.warning("无热点数据可分析")
             return []
 
-        # 取热度最高的前 20 条（统一转 int，避免 str/int 混用导致排序失败）
+        # 取热度最高的前 5 条（控制生成数量，避免运行时间过长）
         def _safe_hot_value(topic):
             val = topic.get("hot_value", 0)
             try:
@@ -69,7 +69,7 @@ class TopicAnalyzer:
             except (ValueError, TypeError):
                 return 0
         all_topics.sort(key=_safe_hot_value, reverse=True)
-        top_topics = all_topics[:20]
+        top_topics = all_topics[:5]
 
         # 构造 LLM 输入
         topics_text = json.dumps(
