@@ -227,6 +227,28 @@ class FeishuNotifier:
             "text": "─────────────\n",
         }])
 
+        # 封面图（如果有）
+        images = article.get("images", [])
+        if images:
+            # 飞书 post 消息支持 img 元素，但需要 image_key
+            # Webhook 机器人没有上传权限，所以用文字+链接的方式展示
+            cover = images[0]
+            cover_url = cover.get("url", "")
+            cover_alt = cover.get("alt", "配图")
+            content.append([{
+                "tag": "text",
+                "text": f"🖼 封面图: {cover_alt}\n",
+            }])
+            content.append([{
+                "tag": "a",
+                "text": "👉 点击查看封面图",
+                "href": cover_url,
+            }])
+            content.append([{
+                "tag": "text",
+                "text": "\n─────────────\n",
+            }])
+
         # 正文（按段落分）
         body = article.get("content", "")
         paragraphs = [p.strip() for p in body.split("\n") if p.strip()]
