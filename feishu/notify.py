@@ -3,9 +3,13 @@
 通过飞书 Webhook 发送消息卡片，推送运行状态和成品。
 """
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -21,9 +25,19 @@ class FeishuNotifier:
 
     def __init__(self):
         self.webhook = os.getenv("FEISHU_WEBHOOK", "")
+        self.webhook_secret = os.getenv("FEISHU_WEBHOOK_SECRET", "")
         self.app_id = os.getenv("FEISHU_APP_ID", "")
         self.app_secret = os.getenv("FEISHU_APP_SECRET", "")
         self.tz = timezone(timedelta(hours=8))
+
+    def _gen_sign(self, timestamp: int) -> str:
+        """生成飞书 Webhook 签名（HMAC-SHA256 + Base64）"""
+        string_to_sign = f"{timestamp}\n{self.webhook_secret}"
+        hmac_code = hmac.new(
+            string_to_sign.encode("utf-8"),
+            digestmod=hashlib.sha256
+        ).digest()
+        return base64.b64encode(hmac_code).decode("utf-8")
 
     def send_text(self, text: str) -> bool:
         """发送纯文本消息"""
@@ -149,6 +163,13 @@ class FeishuNotifier:
             logger.warning("未配置 FEISHU_WEBHOOK，消息未发送")
             logger.info(f"消息内容: {json.dumps(payload, ensure_ascii=False)[:200]}")
             return False
+
+        # 如果配置了签名密钥，则加上签名（飞书机器人开启了安全设置时需要）
+        if self.webhook_secret:
+            timestamp = int(time.time())
+            sign = self._gen_sign(timestamp)
+            payload["timestamp"] = str(timestamp)
+            payload["sign"] = sign
 
         try:
             resp = requests.post(self.webhook, json=payload, timeout=10)

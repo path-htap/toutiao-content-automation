@@ -61,8 +61,14 @@ class TopicAnalyzer:
             logger.warning("无热点数据可分析")
             return []
 
-        # 取热度最高的前 20 条
-        all_topics.sort(key=lambda x: x.get("hot_value", 0), reverse=True)
+        # 取热度最高的前 20 条（统一转 int，避免 str/int 混用导致排序失败）
+        def _safe_hot_value(topic):
+            val = topic.get("hot_value", 0)
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return 0
+        all_topics.sort(key=_safe_hot_value, reverse=True)
         top_topics = all_topics[:20]
 
         # 构造 LLM 输入
