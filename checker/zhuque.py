@@ -1,7 +1,9 @@
-"""朱雀 AI AIGC 检测模块
+"""AIGC 检测模块
 
-调用朱雀 AI（腾讯）检测 API，判断文本是否为 AI 生成。
-每日免费 20 次，需做额度管理。
+说明：
+- 朱雀 AI 检测需要通过腾讯云 EdgeOne 网关调用，配置较复杂。
+- 默认使用本地模式检测（基于 AI 写作模式匹配），配合去 AI 味重写循环使用。
+- 如需接入朱雀 API，请在腾讯云 EdgeOne 控制台创建网关后配置 ZHUQUE_API_BASE_URL。
 """
 
 import json
@@ -15,52 +17,42 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# 朱雀检测 API
-ZHUQUE_API = "https://matrix.tencent.com/api/ai-detect/v1/detect"
-
 # 阈值
-DEFAULT_THRESHOLD = 0.30  # AI 概率 ≤ 30% 视为通过
-MAX_RETRIES = 3  # 检测-重写循环最多 3 次
-DAILY_LIMIT = 20  # 每日 20 次免费额度
+DEFAULT_THRESHOLD = 25  # 本地模式：AI 模式分 ≤ 25 分视为通过（越低越好）
+MAX_RETRIES = 5  # 检测-重写循环最多 5 次
 
 
-class ZhuqueChecker:
-    """朱雀 AI 检测器"""
+class AIGCChecker:
+    """AIGC 检测器（本地模式为主，朱雀 API 可选）"""
 
     def __init__(self):
         self.api_key = os.getenv("ZHUQUE_API_KEY", "")
+        self.api_base = os.getenv("ZHUQUE_API_BASE_URL", "")
         self.tz = timezone(timedelta(hours=8))
         self.threshold = float(os.getenv("AIGC_THRESHOLD", DEFAULT_THRESHOLD))
-        self.daily_count = 0
+        self.use_remote = bool(self.api_key and self.api_base)
+        self.mode = "朱雀API" if self.use_remote else "本地模式检测"
+
+        logger.info(f"AIGC检测模式: {self.mode}")
+        logger.info(f"通过阈值: ≤ {self.threshold}")
 
     def check_articles(self, articles: list) -> dict:
-        """检测多篇文章
+        """检测多篇文章（含检测-重写循环）
 
-        Args:
-            articles: 文章列表
-
-        Returns:
-            检测报告: {total, passed, failed, results, daily_remaining}
+        未通过的文章会自动重写并再次检测，直到通过或达到最大次数。
+        重写后的内容会直接更新到 article 字典中。
         """
+        from humanizer.patterns import PatternDetector
+
+        detector = PatternDetector()
         results = []
         passed = 0
         failed = 0
 
         for article in articles:
-            if self.daily_count >= DAILY_LIMIT:
-                logger.warning(f"朱雀检测每日额度用尽 ({DAILY_LIMIT}次)，跳过剩余文章")
-                break
-
-            content = article.get("content", "")
             title = article.get("main_title", "")
-
-            result = self._check_one(content, title)
-            results.append({
-                "title": title,
-                "ai_probability": result.get("ai_probability", 1.0),
-                "passed": result.get("passed", False),
-                "retry_count": result.get("retry_count", 0),
-            })
+            result = self._check_one(article, detector)
+            results.append(result)
 
             if result.get("passed"):
                 passed += 1
@@ -73,76 +65,89 @@ class ZhuqueChecker:
             "failed": failed,
             "pass_rate": f"{passed}/{len(results)}" if results else "0/0",
             "results": results,
-            "daily_used": self.daily_count,
-            "daily_remaining": DAILY_LIMIT - self.daily_count,
+            "mode": self.mode,
             "threshold": self.threshold,
             "checked_at": datetime.now(self.tz).isoformat(),
         }
 
-        logger.info(f"检测完成: {passed}/{len(results)} 通过 (阈值 {self.threshold})")
+        logger.info(f"检测完成: {passed}/{len(results)} 通过 (模式: {self.mode}, 阈值: {self.threshold})")
         return report
 
-    def _check_one(self, content: str, title: str) -> dict:
-        """检测单篇文章
+    def _check_one(self, article: dict, detector) -> dict:
+        """检测单篇文章（含检测-重写循环）
 
-        包含检测-重写循环：未通过→重写→再检测，最多 MAX_RETRIES 次
+        未通过则调用 Humanizer 深度重写，再检测，最多 MAX_RETRIES 次。
         """
         from humanizer.rewrite import Humanizer
 
         humanizer = Humanizer()
-        current_content = content
+        title = article.get("main_title", "")
         retry_count = 0
+        ai_score = 100.0
 
         while retry_count < MAX_RETRIES:
-            if self.daily_count >= DAILY_LIMIT:
-                logger.warning("每日额度用尽")
-                return {"ai_probability": 1.0, "passed": False, "retry_count": retry_count}
+            # 检测
+            current_content = article.get("content", "")
 
-            # 调用检测 API
-            ai_prob = self._call_api(current_content)
-            self.daily_count += 1
+            if self.use_remote:
+                ai_score = self._call_zhuque_api(current_content)
+                if ai_score is None:
+                    logger.warning(f"朱雀API调用失败，降级到本地模式")
+                    self.use_remote = False
+                    self.mode = "本地模式检测"
+                    report = detector.detect(current_content)
+                    ai_score = report["ai_score"]
+            else:
+                report = detector.detect(current_content)
+                ai_score = report["ai_score"]
 
-            if ai_prob is None:
-                logger.error(f"检测 API 调用失败 [{title}]")
-                return {"ai_probability": 1.0, "passed": False, "retry_count": retry_count}
+            logger.info(f"检测 [{title[:20]}]: AI分 {ai_score:.0f} (第{retry_count+1}次)")
 
-            logger.info(f"检测 [{title[:20]}]: AI概率 {ai_prob:.1%} (第{retry_count+1}次)")
+            if ai_score <= self.threshold:
+                logger.info(f"✅ 通过检测 [{title[:20]}]")
+                return {
+                    "title": title,
+                    "ai_score": ai_score,
+                    "passed": True,
+                    "retry_count": retry_count,
+                    "mode": self.mode,
+                }
 
-            if ai_prob <= self.threshold:
-                logger.info(f"通过检测 [{title[:20]}]")
-                return {"ai_probability": ai_prob, "passed": True, "retry_count": retry_count}
-
-            # 未通过，重写后再检测
+            # 未通过，深度重写
             retry_count += 1
             if retry_count < MAX_RETRIES:
-                logger.info(f"未通过，重写第 {retry_count} 次...")
-                current_content = humanizer._tier2_rewrite(current_content, title)
-                time.sleep(1)  # 礼貌延迟
+                logger.info(f"❌ 未通过，第 {retry_count} 次深度重写...")
+                temp_article = {"main_title": title, "content": current_content}
+                result = humanizer._process_one(temp_article)
+                article["content"] = result["content"]
+                time.sleep(0.5)
 
-        return {"ai_probability": ai_prob, "passed": False, "retry_count": retry_count}
+        return {
+            "title": title,
+            "ai_score": ai_score,
+            "passed": False,
+            "retry_count": retry_count,
+            "mode": self.mode,
+        }
 
-    def _call_api(self, content: str) -> float:
-        """调用朱雀检测 API
+    def _call_zhuque_api(self, content: str) -> float:
+        """调用朱雀检测 API（需配置 ZHUQUE_API_BASE_URL）
 
-        Returns:
-            AI 生成概率 (0.0-1.0)，失败返回 None
+        朱雀 API 需要通过腾讯云 EdgeOne 网关调用，
+        请在 EdgeOne 控制台创建网关后配置 ZHUQUE_API_BASE_URL。
         """
-        if not self.api_key:
-            logger.warning("未配置 ZHUQUE_API_KEY，跳过检测")
-            # 降级: 用本地模式检测器估算
-            from humanizer.patterns import PatternDetector
-            detector = PatternDetector()
-            report = detector.detect(content)
-            return report["ai_score"] / 100.0
+        if not self.api_key or not self.api_base:
+            return None
 
         try:
+            url = f"{self.api_base.rstrip('/')}/v1/detect"
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             }
-            data = {"text": content[:5000]}  # 限制长度
+            data = {"text": content[:5000]}
 
-            resp = requests.post(ZHUQUE_API, headers=headers, json=data, timeout=30)
+            resp = requests.post(url, headers=headers, json=data, timeout=30)
 
             if resp.status_code == 429:
                 logger.warning("朱雀 API 限流")
@@ -151,9 +156,12 @@ class ZhuqueChecker:
             resp.raise_for_status()
             result = resp.json()
 
-            # 解析 AI 概率（根据实际 API 返回格式调整）
-            ai_prob = result.get("data", {}).get("ai_probability", 0.5)
-            return float(ai_prob)
+            # 解析 AI 概率
+            ai_prob = result.get("data", {}).get("ai_probability", None)
+            if ai_prob is not None:
+                # 转换为 0-100 分制
+                return float(ai_prob) * 100
+            return None
 
         except Exception as e:
             logger.error(f"朱雀 API 调用失败: {e}")
@@ -162,7 +170,7 @@ class ZhuqueChecker:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    checker = ZhuqueChecker()
+    checker = AIGCChecker()
     test_articles = [{"main_title": "测试", "content": "这是一段测试文本。"}]
     report = checker.check_articles(test_articles)
     print(json.dumps(report, ensure_ascii=False, indent=2))

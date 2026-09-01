@@ -269,7 +269,7 @@ def humanize_text(articles: list = None) -> list:
 
 def check_aigc(articles: list = None) -> dict:
     """Phase 8: AIGC检测"""
-    from checker.zhuque import ZhuqueChecker
+    from checker.zhuque import AIGCChecker
 
     logger.info("开始AIGC检测...")
     if articles is None:
@@ -281,13 +281,21 @@ def check_aigc(articles: list = None) -> dict:
         with open(articles_file, "r", encoding="utf-8") as f:
             articles = json.load(f)
 
-    checker = ZhuqueChecker()
+    checker = AIGCChecker()
     report = checker.check_articles(articles)
 
     today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d")
-    output_file = OUTPUT_DIR / f"aigc_report_{today}.json"
-    with open(output_file, "w", encoding="utf-8") as f:
+
+    # 保存检测报告
+    report_file = OUTPUT_DIR / f"aigc_report_{today}.json"
+    with open(report_file, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
+
+    # 重要：把重写后的文章存回文件，否则发布阶段读到的还是原文
+    final_file = OUTPUT_DIR / f"articles_final_{today}.json"
+    with open(final_file, "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False, indent=2)
+    logger.info(f"最终版文章已保存: {final_file}")
 
     logger.info(f"AIGC检测完成: {report.get('passed', 0)}/{report.get('total', 0)} 篇通过")
     return report
@@ -306,7 +314,10 @@ def publish_to_feishu(articles: list = None, report: dict = None) -> bool:
     today = datetime.now(tz).strftime("%Y%m%d")
 
     if articles is None:
-        articles_file = OUTPUT_DIR / f"articles_humanized_{today}.json"
+        # 优先读取最终版（经过检测-重写循环的）
+        final_file = OUTPUT_DIR / f"articles_final_{today}.json"
+        humanized_file = OUTPUT_DIR / f"articles_humanized_{today}.json"
+        articles_file = final_file if final_file.exists() else humanized_file
         if articles_file.exists():
             with open(articles_file, "r", encoding="utf-8") as f:
                 articles = json.load(f)
