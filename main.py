@@ -27,7 +27,8 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 # 日志配置
 def setup_logging():
     """配置日志，同时输出到控制台和文件"""
-    LOGS_DIR.mkdir(exist_ok=True)
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     log_file = LOGS_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
     formatter = logging.Formatter(
@@ -385,6 +386,13 @@ def run_pipeline(start_phase: int = 1, force: bool = False):
         except Exception as e:
             logger.error(f"Phase {phase_num} 失败: {e}", exc_info=True)
             logger.info(f"可使用 --phase {phase_num} 重新执行此阶段")
+            # 发送飞书错误通知
+            try:
+                from feishu.notify import FeishuNotifier
+                notifier = FeishuNotifier()
+                notifier.send_error(f"Phase {phase_num}: {PHASES[phase_num][0]}", str(e))
+            except Exception as notify_err:
+                logger.warning(f"发送飞书错误通知失败: {notify_err}")
             return False
 
     end_time = datetime.now(tz)
