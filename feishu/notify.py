@@ -46,12 +46,13 @@ class FeishuNotifier:
             "content": {"text": text}
         })
 
-    def send_summary(self, articles: list, report: dict = None) -> bool:
+    def send_summary(self, articles: list, report: dict = None, doc_url: str = "") -> bool:
         """发送运行摘要消息卡片
 
         Args:
             articles: 文章列表
             report: AIGC 检测报告
+            doc_url: 飞书汇总文档链接
         """
         now = datetime.now(self.tz).strftime("%Y-%m-%d %H:%M")
 
@@ -106,6 +107,14 @@ class FeishuNotifier:
                         for item in article_items
                     ],
                     {"tag": "hr"},
+                    {
+                        "tag": "div",
+                        "text": {"tag": "lark_md", "content": (
+                            f"📄 [点此查看完整文档]({doc_url})"
+                            if doc_url else
+                            "💡 配置 FEISHU_APP_ID 和 FEISHU_APP_SECRET 可自动创建飞书文档"
+                        )}
+                    },
                     {
                         "tag": "div",
                         "text": {"tag": "lark_md", "content": "请在飞书文档中审阅完整内容，回复 **发布** 即可发布，回复修改意见则重新生成。"}

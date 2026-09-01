@@ -297,6 +297,7 @@ def publish_to_feishu(articles: list = None, report: dict = None) -> bool:
     """Phase 9: 飞书发布"""
     from feishu.notify import FeishuNotifier
     from feishu.approval import ApprovalGate
+    from feishu.doc_creator import FeishuDocCreator
 
     logger.info("开始飞书发布...")
     tz = timezone(timedelta(hours=8))
@@ -314,9 +315,19 @@ def publish_to_feishu(articles: list = None, report: dict = None) -> bool:
             with open(report_file, "r", encoding="utf-8") as f:
                 report = json.load(f)
 
+    # 创建飞书文档（如果配置了 App ID/Secret）
+    summary_doc_url = ""
+    try:
+        creator = FeishuDocCreator()
+        if creator.app_id and creator.app_secret:
+            summary_doc_url = creator.create_summary_doc(articles, report)
+            logger.info(f"飞书汇总文档已创建: {summary_doc_url}")
+    except Exception as e:
+        logger.warning(f"创建飞书文档失败: {e}")
+
     # 推送成品到飞书审阅
     notifier = FeishuNotifier()
-    notifier.send_summary(articles, report)
+    notifier.send_summary(articles, report, doc_url=summary_doc_url)
 
     # 审批门（在 GitHub Actions 中，这一步仅推送通知，
     # 实际审批需用户在飞书回复，下次运行时检查审批状态）
