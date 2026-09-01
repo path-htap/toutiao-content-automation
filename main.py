@@ -294,10 +294,12 @@ def check_aigc(articles: list = None) -> dict:
 
 
 def publish_to_feishu(articles: list = None, report: dict = None) -> bool:
-    """Phase 9: 飞书发布"""
+    """Phase 9: 飞书发布（简化版）
+
+    直接用 Webhook 把文章发到飞书群，手机上直接看全文。
+    不依赖飞书文档 API，不需要额外权限配置。
+    """
     from feishu.notify import FeishuNotifier
-    from feishu.approval import ApprovalGate
-    from feishu.doc_creator import FeishuDocCreator
 
     logger.info("开始飞书发布...")
     tz = timezone(timedelta(hours=8))
@@ -315,26 +317,21 @@ def publish_to_feishu(articles: list = None, report: dict = None) -> bool:
             with open(report_file, "r", encoding="utf-8") as f:
                 report = json.load(f)
 
-    # 创建飞书文档（如果配置了 App ID/Secret）
-    summary_doc_url = ""
-    try:
-        creator = FeishuDocCreator()
-        if creator.app_id and creator.app_secret:
-            summary_doc_url = creator.create_summary_doc(articles, report)
-            logger.info(f"飞书汇总文档已创建: {summary_doc_url}")
-    except Exception as e:
-        logger.warning(f"创建飞书文档失败: {e}")
-
-    # 推送成品到飞书审阅
     notifier = FeishuNotifier()
-    notifier.send_summary(articles, report, doc_url=summary_doc_url)
 
-    # 审批门（在 GitHub Actions 中，这一步仅推送通知，
-    # 实际审批需用户在飞书回复，下次运行时检查审批状态）
-    gate = ApprovalGate()
-    gate.submit_for_review(articles, report)
+    # 第一步：发汇总卡片
+    notifier.send_summary(articles, report)
 
-    logger.info("飞书发布完成（等待用户审批）")
+    # 第二步：逐篇发送完整文章内容（直接发消息，不用文档）
+    if articles:
+        logger.info(f"开始发送 {len(articles)} 篇完整文章到飞书...")
+        send_ok = notifier.send_articles(articles)
+        if send_ok:
+            logger.info("文章内容已全部发送到飞书")
+        else:
+            logger.warning("部分文章发送失败")
+
+    logger.info("飞书发布完成")
     return True
 
 

@@ -142,6 +142,119 @@ class FeishuNotifier:
 
         return self._send(card)
 
+    def send_articles(self, articles: list) -> bool:
+        """发送完整文章内容（每篇一条消息，简单直接）
+
+        不依赖飞书文档 API，不需要额外权限配置，
+        直接用 Webhook 发富文本消息，手机上直接看全文。
+        """
+        if not articles:
+            return False
+
+        logger.info(f"发送文章内容到飞书: {len(articles)} 篇")
+        all_ok = True
+
+        for i, article in enumerate(articles, 1):
+            title = article.get("main_title", f"文章{i}")
+            sub_title = article.get("sub_title", "")
+            content = article.get("content", "")
+            conclusion = article.get("conclusion", "")
+            style = article.get("style_name", "")
+
+            # 构造富文本内容
+            lines = []
+            lines.append(f"📌 **{title}**")
+            if sub_title:
+                lines.append(f"_{sub_title}_")
+            lines.append(f"🏷 风格: {style}")
+            lines.append("---")
+            lines.append("")
+            lines.append(content)
+            lines.append("")
+            lines.append("---")
+            lines.append(f"💡 **结语**: {conclusion}")
+            lines.append("")
+            lines.append(f"> 第 {i}/{len(articles)} 篇")
+
+            text = "\n".join(lines)
+
+            # 飞书富文本消息（post 类型，支持排版）
+            payload = {
+                "msg_type": "post",
+                "content": {
+                    "post": {
+                        "zh_cn": {
+                            "title": f"[{i}/{len(articles)}] {title}",
+                            "content": self._build_post_content(article),
+                        }
+                    }
+                }
+            }
+
+            ok = self._send(payload)
+            if not ok:
+                all_ok = False
+
+        return all_ok
+
+    def _build_post_content(self, article: dict) -> list:
+        """构造飞书 post 消息的内容结构（二维数组）
+
+        飞书 post 消息格式：content 是一个二维数组，
+        每个子数组代表一行，里面可以有 text/a/at/img 等元素。
+        """
+        content = []
+
+        # 副标题
+        sub_title = article.get("sub_title", "")
+        if sub_title:
+            content.append([{
+                "tag": "text",
+                "text": f"💬 {sub_title}\n",
+            }])
+
+        # 风格标签
+        style = article.get("style_name", "")
+        if style:
+            content.append([{
+                "tag": "text",
+                "text": f"🏷 风格: {style}\n",
+            }])
+
+        # 分割线
+        content.append([{
+            "tag": "text",
+            "text": "─────────────\n",
+        }])
+
+        # 正文（按段落分）
+        body = article.get("content", "")
+        paragraphs = [p.strip() for p in body.split("\n") if p.strip()]
+        for para in paragraphs:
+            content.append([{
+                "tag": "text",
+                "text": f"{para}\n",
+            }])
+            # 段间空一行
+            content.append([{
+                "tag": "text",
+                "text": "\n",
+            }])
+
+        # 结语
+        conclusion = article.get("conclusion", "")
+        if conclusion:
+            content.append([{
+                "tag": "text",
+                "text": f"─────────────\n",
+            }])
+            content.append([{
+                "tag": "text",
+                "text": f"💡 {conclusion}",
+            }])
+
+        return content
+
     def send_error(self, phase: str, error: str) -> bool:
         """发送错误通知"""
         now = datetime.now(self.tz).strftime("%Y-%m-%d %H:%M")
