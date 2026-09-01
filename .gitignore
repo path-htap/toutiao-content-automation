@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# 环境变量
+.env
+*.env.local
+
+# 输出文件（保留目录结构，不提交内容）
+output/*.json
+output/html/*.html
+output/image_cache/
+logs/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 飞书审批状态（含文章内容，不提交）
+output/approval_state.json
+output/pipeline_state.json

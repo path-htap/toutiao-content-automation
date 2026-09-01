@@ -1,0 +1,37 @@
+{
+  "toutiao": {
+    "name": "今日头条",
+    "url": "https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc",
+    "enabled": true,
+    "limit": 50
+  },
+  "baidu": {
+    "name": "百度热搜",
+    "url": "https://top.baidu.com/board?tab=realtime",
+    "enabled": true,
+    "limit": 30
+  },
+  "weibo": {
+    "name": "微博热搜",
+    "url": "https://weibo.com/ajax/side/hotSearch",
+    "enabled": true,
+    "limit": 30
+  },
+  "zhihu": {
+    "name": "知乎热榜",
+    "url": "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=50",
+    "enabled": true,
+    "limit": 30
+  },
+  "douyin": {
+    "name": "抖音热搜",
+    "url": "https://www.douyin.com/aweme/v1/web/hot/search/list/",
+    "enabled": false,
+    "limit": 30
+  },
+  "keywords": {
+    "focus": ["AI", "人工智能", "科技", "财经", "互联网", "手机", "汽车"],
+    "filter": ["广告", "推广", "色情", "赌博"],
+    "required": []
+  }
+}
