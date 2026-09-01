@@ -75,10 +75,10 @@ def check_environment() -> bool:
     required_keys = [
         "ZHIPU_API_KEY",
         "PEXELS_API_KEY",
-        "UNSPLASH_API_KEY",
         "FEISHU_WEBHOOK",
     ]
     optional_keys = [
+        "UNSPLASH_API_KEY",
         "FEISHU_APP_ID",
         "FEISHU_APP_SECRET",
         "SILICONFLOW_API_KEY",
