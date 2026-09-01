@@ -4,8 +4,22 @@ on:
   schedule:
     # UTC 00:00 = 北京时间 08:00
     - cron: '0 0 * * *'
-  # 支持手动触发
+  # 支持手动触发（支持参数）
   workflow_dispatch:
+    inputs:
+      phase:
+        description: '运行阶段：all=全部，2=只抓热点'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - '2'
+      command:
+        description: '指令来源（手动触发留空即可）'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   run-pipeline:
@@ -47,7 +61,14 @@ jobs:
         run: python main.py --dry-run
 
       - name: 执行流水线
-        run: python main.py
+        run: |
+          if [ "${{ github.event.inputs.phase }}" = "2" ]; then
+            python main.py --phase 2
+          else
+            python main.py
+          fi
+        env:
+          COMMAND_SOURCE: ${{ github.event.inputs.command }}
 
       - name: 上传成品
         if: always()

@@ -1,0 +1,11 @@
+name = "feishu-toutiao-bot"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# 环境变量（部署后在 Cloudflare 控制台配置）
+# 或者用 wrangler secret put 命令添加
+# 需要配置的 Secrets:
+#   GITHUB_TOKEN       - GitHub Personal Access Token (要有 workflow 权限)
+#   GITHUB_REPO        - 仓库地址，格式: username/repo  例如: path-htap/toutiao-content-automation
+#   FEISHU_APP_ID      - 飞书应用 App ID
+#   FEISHU_APP_SECRET  - 飞书应用 App Secret
