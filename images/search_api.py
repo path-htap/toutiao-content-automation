@@ -36,16 +36,21 @@ class ImageSearcher:
         self._unsplash_count = 0
         self._cache = {}
 
-    def search(self, keywords: str, per_page: int = 5) -> list:
+    def search(self, keywords, per_page: int = 5) -> list:
         """搜索图片
 
         Args:
-            keywords: 搜索关键词
+            keywords: 搜索关键词（字符串或列表）
             per_page: 每页数量
 
         Returns:
             图片列表: [{url, width, height, alt, source, license}]
         """
+        # 统一转成字符串（keywords 可能是 list 也可能是 str）
+        if isinstance(keywords, list):
+            keywords = " ".join(str(k) for k in keywords)
+        keywords = str(keywords)
+
         # 检查缓存
         cache_key = keywords.lower().replace(" ", "_")
         if cache_key in self._cache:
