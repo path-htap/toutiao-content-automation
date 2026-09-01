@@ -429,7 +429,8 @@ def main():
         func()
     else:
         # 完整流水线
-        run_pipeline(force=args.force)
+        success = run_pipeline(force=args.force)
+        sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
