@@ -31,6 +31,7 @@ jobs:
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       UNSPLASH_API_KEY: ${{ secrets.UNSPLASH_API_KEY }}
       ZHUQUE_API_KEY: ${{ secrets.ZHUQUE_API_KEY }}
+      SAPLING_API_KEY: ${{ secrets.SAPLING_API_KEY }}
       FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
       FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
       FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
