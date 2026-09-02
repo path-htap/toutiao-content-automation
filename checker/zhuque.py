@@ -195,24 +195,56 @@ class AIGCChecker:
 
     def _call_llm_judge(self, content: str) -> float:
         """调用 LLM（智谱/硅基 免费模型）做 AI 判定，返回 0-100 分。
-        使用与文章生成相同的 LLMClient，保证 key/模型已配置可用。
+        优先复用与文章生成相同的 LLMClient；若其不可用，则直接 requests 调智谱 v4 接口兜底。
         """
-        from writers.article_agent import LLMClient
-
-        client = LLMClient()  # 自动选有 key 的 provider（zhipu 优先）
-        prompt = LLM_JUDGE_PROMPT.format(content=content[:3000])  # 判定用文本上限，控制成本
-        resp = client.chat(
-            [{"role": "system", "content": prompt}],
-            max_tokens=16,
-            temperature=0.0,
-        )
-        text = resp.choices[0].message.content.strip()
-        # 只取数字
         import re
+        prompt = LLM_JUDGE_PROMPT.format(content=content[:3000])  # 判定用文本上限，控制成本
+        text = ""
+
+        # 方案 A：复用项目现有 LLMClient（保证 key/模型已配置可用）
+        try:
+            from writers.article_agent import LLMClient
+            client = LLMClient()  # 自动选有 key 的 provider（zhipu 优先）
+            resp = client.chat(
+                [{"role": "system", "content": prompt}],
+                max_tokens=16,
+                temperature=0.0,
+            )
+            text = resp.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f"LLMClient 判定调用失败({e})，尝试直接调智谱 v4 接口兜底")
+
+        # 方案 B：直接 requests 调智谱 v4 兼容接口兜底（仅需 ZHIPU_API_KEY）
+        if not text and self.zhipu_key:
+            try:
+                resp = requests.post(
+                    "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.zhipu_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "glm-4-flash",
+                        "messages": [{"role": "system", "content": prompt}],
+                        "max_tokens": 16,
+                        "temperature": 0.0,
+                    },
+                    timeout=40,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                text = data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                logger.error(f"智谱 v4 兜底调用失败: {e}")
+                return None
+
+        if not text:
+            return None
+
         m = re.search(r"\d+(\.\d+)?", text)
         if not m:
             return None
-        score = float(m.group(0))  # 用 group(0)，避免无小数时 group(1) 为 None
+        score = float(m.group(0))
         if score > 100:
             score = 100.0
         if score < 0:
