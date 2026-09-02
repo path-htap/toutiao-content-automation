@@ -1,14 +1,17 @@
-"""去 AI 味重写模块（加强版）
+"""去 AI 味重写模块（加强版 v2）
 
 核心策略：不是"润色"，而是"用口语重新讲一遍"。
-三层处理 → 五层处理，每一层都更激进：
-  Tier 1: 词汇层 - 替换 AI 套话
+在原有 5 层处理基础上，并入 Humanizer-zh 的中文写作模式，
+更系统地清除：欧化翻译腔、破折号滥用、排比对仗、系动词回避、
+虚假互动结尾、AI 高频词、以及"假坦诚"开场等痕迹。
+
+层级（v2）：
+  Tier 1: 词汇层 - 替换 AI 套话 / 互联网黑话 / 翻译腔（扩充词库）
   Tier 2: 句式层 - 打破工整结构，长短句交替
   Tier 3: 视角层 - 加入第一人称、个人感受、反问
   Tier 4: 细节层 - 增加具体细节、口语助词、语气词
+  Tier 4.5: 标点与排版层 - 清理破折号滥用、排比堆砌、加粗/emoji 装饰、虚假互动
   Tier 5: 整体重写 - LLM 用"聊天口吻"重新讲一遍
-
-参考: Humanizer-zh / shuorenhua / GPTZero 绕过策略
 """
 
 import json
@@ -19,6 +22,7 @@ import re
 from humanizer.patterns import PatternDetector
 
 logger = logging.getLogger(__name__)
+
 
 # ─── 深度去AI味 Prompt（极端版） ──────────────────────
 
@@ -34,10 +38,21 @@ DEEP_HUMANIZE_PROMPT = """你现在要扮演一个今日头条的普通读者，
 6. **用具体代替抽象**：不要说"日益增长"，说"越来越多了"；不要说"至关重要"，说"真的很关键"
 7. **增加口语连接**：用"话说回来""你别说""讲真""实不相瞒""有意思的是"代替"综上所述""值得注意的是"
 8. **结尾要互动**：最后加一句引导评论的话，比如"你们怎么看？评论区聊聊""换作是你你会怎么做？"
+9. **说人话，不要端**：不要像新闻稿，要像刷短视频时随手写的评论。可以用一个真实的反应、一个具体的场景开头
+10. **可以有倾向**：不要骑墙；实在拿不准就给出你的判断和理由
 
 ## 绝对禁止出现的词（一个都不能有）
 
-值得注意的是、综上所述、总的来说、总而言之、由此可见、不难发现、不难看出、显而易见、毋庸置疑、不可否认、至关重要、举足轻重、不容忽视、日益增长、蓬勃发展、日新月异、突飞猛进、方兴未艾、如火如荼、与此同时、在此基础上、作为重要组成部分、在这样的背景下、随着时代的发展、扮演着重要角色、发挥着重要作用、具有重要意义、可以说、不得不提、令人瞩目、这无疑、这充分、这标志着
+值得注意的是、综上所述、总的来说、总而言之、由此可见、不难发现、不难看出、显而易见、毋庸置疑、不可否认、至关重要、举足轻重、不容忽视、日益增长、蓬勃发展、日新月异、突飞猛进、方兴未艾、如火如荼、与此同时、在此基础上、作为重要组成部分、在这样的背景下、随着时代的发展、扮演着重要角色、发挥着重要作用、具有重要意义、可以说、不得不提、令人瞩目、这无疑、这充分、这标志着、标志着、见证了、象征着、彰显了、凸显了、意味着一个、作为……的体现、为……奠定基础、不断演变的格局、不可磨灭的印记、深度融合、协同发力、赋能、抓手、闭环、底层逻辑、颗粒度、组合拳、出拳、引爆、抢跑、赛道、天花板、红利期、风口、破局、深化落地、打造新高地、谱写新篇章、注入新动能
+
+## 结构禁忌（严格遵守）
+
+- **不要用破折号当"转折/强调"**（X——Y），改成逗号或句号
+- **不要三连排比、不要"不仅是…更是…""不是…而是…"堆砌**，一篇最多一处
+- **不要"作为…""拥有…""标志着…"这种系动词替代**，直接用"是/有"
+- **不要"首先…其次…最后…综上"**；不要"话不多说，以下是你需要知道的"这类路标句
+- **不要加粗列点、不要 emoji 当分隔**（🚀✅💡），用文字表达层次
+- **不要"你觉得呢？点赞关注~"这样的假互动**，具体指出你真正想问的问题
 
 ## 输出要求
 
@@ -59,7 +74,7 @@ DEEP_HUMANIZE_PROMPT = """你现在要扮演一个今日头条的普通读者，
 
 # ─── 口语化词库 ─────────────────────────────────────────
 
-# 书面语 → 口语替换表（更彻底）
+# 书面语 → 口语替换表（更彻底；并入 Humanizer-zh / 中文社区共识）
 FORMAL_TO_CASUAL = {
     "值得注意的是": "有意思的是",
     "综上所述": "说到底",
@@ -101,6 +116,44 @@ FORMAL_TO_CASUAL = {
     "取得了": "拿到了",
     "给予了": "给了",
     "提供了": "给了",
+    "发挥了重要作用": "帮了大忙",
+    "扮演着重要角色": "挺关键的",
+    "具有重要意义": "意义挺大",
+    "作为重要组成部分": "是很重要的一块",
+    "随着时代的发展": "这几年",
+    "在这样的背景下": "在这种情况里",
+    "作为": "是",
+    "标志着": "说明",
+    "见证了": "赶上了",
+    "象征着": "就是",
+    "彰显了": "看得出",
+    "凸显了": "显出",
+    "意味着一个": "那就是",
+    "深度融合": "彻底绑到一起",
+    "协同发力": "一起使劲",
+    "赋能": "帮上忙",
+    "抓手": "抓手",
+    "闭环": "能转起来",
+    "底层逻辑": "根本道理",
+    "颗粒度": "细到什么程度",
+    "引爆": "带火",
+    "抢跑": "抢先",
+    "风口": "热门",
+    "破局": "打开局面",
+    "谱写新篇章": "上个大台阶",
+    "注入新动能": "供上有劲的新东西",
+    "打造新高地": "做出个新高度",
+    "至关重要": "特重要",
+    "不容小觑": "可别小看",
+    # 人文/宣传性语言
+    "令人叹为观止": "绝了",
+    "必游之地": "一定要去看看",
+    "充满活力": "特别有劲",
+    "丰富的文化遗产": "文化底蕴挺厚",
+    "迷人的": "很吸引人",
+    "坐落于": "在",
+    "位于": "在",
+    "致力于": "一心扑在",
 }
 
 # 句首语气词（随机插入，增加口语感）
@@ -116,6 +169,7 @@ SENTENCE_STARTERS = [
     "你还别说，",
     "在我看来，",
     "我个人认为，",
+    "说实话，这事儿吧，",
 ]
 
 # 句末语气词（随机加在陈述句末尾）
@@ -124,7 +178,8 @@ SENTENCE_ENDERS = ["啊", "吧", "嘛", "呢", "哦", "哈"]
 # 过渡句（用来打破段落间的工整连接）
 TRANSITIONS = [
     "说起来也是有意思。",
-    "你猜怎么着？",
+    "你猜怎么着，",
+    "反正我是没想到。",
     "这事儿吧，说复杂也复杂，说简单也简单。",
     "换个角度想，其实也能理解。",
     "我看到这个新闻的时候第一反应就是：这也行？",
@@ -135,7 +190,7 @@ TRANSITIONS = [
 
 
 class Humanizer:
-    """去 AI 味处理器（加强版）"""
+    """去 AI 味处理器（加强版 v2）"""
 
     def __init__(self):
         self.detector = PatternDetector()
@@ -171,6 +226,9 @@ class Humanizer:
         # Tier 4: 细节层 - 加入语气词、口语助词
         content = self._tier4_details(content)
 
+        # Tier 4.5: 标点与排版层 - 清理破折号滥用/排比/虚假互动/emoji
+        content = self._tier45_markup_clean(content)
+
         # Tier 5: LLM 深度重写（核心步骤，用口语重新讲一遍）
         content = self._tier5_deep_rewrite(content, title)
 
@@ -183,7 +241,7 @@ class Humanizer:
             "before_ai_score": before_report["ai_score"],
             "after_ai_score": after_report["ai_score"],
             "score_reduction": before_report["ai_score"] - after_report["ai_score"],
-            "tiers_applied": 5,
+            "tiers_applied": 6,
             "before_patterns": before_report["pattern_count"],
             "after_patterns": after_report["pattern_count"],
         }
@@ -205,20 +263,12 @@ class Humanizer:
         return content
 
     def _tier2_sentence_mix(self, content: str) -> str:
-        """Tier 2: 句式层 - 打破工整结构，长短句交替
-
-        策略：
-        - 把一些长句拆成短句
-        - 偶尔把独立句子单独成段
-        - 加入设问句
-        """
+        """Tier 2: 句式层 - 打破工整结构，长短句交替"""
         paragraphs = [p for p in content.split("\n") if p.strip()]
         result = []
 
         for i, para in enumerate(paragraphs):
-            # 每 3 段拆一段：把一个长段落拆成两段
             if i % 3 == 1 and len(para) > 100:
-                # 找一个中间位置的句号、逗号或问号拆开
                 mid = len(para) // 2
                 split_pos = -1
                 for sep in ["。", "！", "？", "，", "；"]:
@@ -231,7 +281,6 @@ class Humanizer:
                     first_half = para[:split_pos].strip()
                     second_half = para[split_pos:].strip()
                     result.append(first_half)
-                    # 第二段前加一句过渡
                     if i % 2 == 0:
                         result.append("你猜后续怎么着？")
                     result.append(second_half)
@@ -243,26 +292,17 @@ class Humanizer:
         return "\n\n".join(result)
 
     def _tier3_perspective(self, content: str) -> str:
-        """Tier 3: 视角层 - 加入第一人称和主观感受
-
-        策略：
-        - 在 2-3 个句子前加入第一人称开头
-        - 加入反问句
-        - 加入个人评价
-        """
+        """Tier 3: 视角层 - 加入第一人称和主观感受"""
         paragraphs = [p for p in content.split("\n\n") if p.strip()]
         result = []
 
         for i, para in enumerate(paragraphs):
             modified = para
 
-            # 第 1 段加入"我看到"开头的引入
             if i == 0 and not para.startswith(("我", "你", "说", "讲")):
                 modified = "我刷到这个消息的时候，第一反应是——" + modified
 
-            # 中间段落随机加入第一人称评价
             elif i > 0 and i < len(paragraphs) - 1 and len(para) > 50:
-                # 在段落末尾加入个人评论
                 if self._rng.random() > 0.5:
                     opinions = [
                         "我个人觉得吧，这事儿还真没那么简单。",
@@ -274,12 +314,10 @@ class Humanizer:
                     opinion = self._rng.choice(opinions)
                     modified = modified.rstrip("。！？") + "。" + opinion
                 else:
-                    # 在段首加入过渡
                     starter = self._rng.choice(SENTENCE_STARTERS)
                     if not modified.startswith(tuple(SENTENCE_STARTERS)):
                         modified = starter + modified
 
-            # 最后一段加入反问互动
             if i == len(paragraphs) - 1:
                 questions = [
                     "你们怎么看？评论区聊聊。",
@@ -295,13 +333,7 @@ class Humanizer:
         return "\n\n".join(result)
 
     def _tier4_details(self, content: str) -> str:
-        """Tier 4: 细节层 - 加入语气词和口语细节
-
-        策略：
-        - 少量句子末尾加语气词（啊、吧、嘛）
-        - 加入一些"废话"连接
-        - 让文字更"碎"一点
-        """
+        """Tier 4: 细节层 - 加入语气词和口语细节"""
         paragraphs = [p for p in content.split("\n\n") if p.strip()]
         result = []
 
@@ -313,10 +345,8 @@ class Humanizer:
                 sent = sentences[j]
                 punct = sentences[j + 1] if j + 1 < len(sentences) else "。"
 
-                # 大约 20% 的句子加句末语气词
                 if self._rng.random() < 0.2 and len(sent) > 10 and punct == "。":
                     ender = self._rng.choice(SENTENCE_ENDERS)
-                    # 避免重复
                     if not sent.endswith(tuple(SENTENCE_ENDERS)):
                         sent = sent + ender
 
@@ -325,6 +355,34 @@ class Humanizer:
             result.append("".join(new_sentences))
 
         return "\n\n".join(result)
+
+    def _tier45_markup_clean(self, content: str) -> str:
+        """Tier 4.5: 标点与排版层（新增）
+
+        清理 Humanizer-zh 识别的"标点与排版 / 结构"类 AI 痕迹：
+        - 破折号滥用：把 "X——Y" 简化，只保留真正需要的
+        - 三连排比 / 对仗堆砌：适当合并
+        - 加粗列点、emoji 装饰：转成普通文字
+        - 路标句（"首先…其次…"）、公式化小标题
+        - "不仅是…更是…""不是…而是…"：保留，但只留一处（此处简化处理）
+        - 虚假互动结尾：删掉纯引流式的"你觉得呢？点赞关注"
+        """
+        # 1) emoji 装饰符号（🚀✅💡🔥⭐）直接去掉，避免被当"结构痕迹"
+        content = re.sub(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u{FE0F}]", "", content)
+
+        # 2) 破折号滥用：把大段 "——" 降级为逗号/句号
+        #    保留单字破折号用于插入语，但替换 "……——X" 为 "：X"
+        content = re.sub(r"([。！？])\s*——\s*", r"\1", content)
+        content = re.sub(r"，\s*——\s*", "，", content)
+
+        # 3) 路标句：删除 "首先/其次/最后/综上" 类硬编号
+        content = re.sub(r"^(首先|其次|再次|最后|综上|另外)[,，、:：]\s*", "", content)
+
+        # 4) 假互动/引流结尾（删除纯引流句，保留真正反问）
+        content = re.sub(r"[（(]?(觉得有帮助|有帮助的话|喜欢的话|记得|欢迎|可以点个)[^。！？]{0,20}?(点赞|关注|收藏|转发)[^。！？]*[。！？]?", "", content)
+        content = re.sub(r"(点个赞|关注一下|关注哦|记得关注|来个三连|送你小心心)[。！？\s]*", "", content)
+
+        return content
 
     def _tier5_deep_rewrite(self, content: str, title: str) -> str:
         """Tier 5: LLM 深度重写（核心步骤）
