@@ -212,7 +212,7 @@ class AIGCChecker:
         m = re.search(r"\d+(\.\d+)?", text)
         if not m:
             return None
-        score = float(m.group(1))
+        score = float(m.group(0))  # 用 group(0)，避免无小数时 group(1) 为 None
         if score > 100:
             score = 100.0
         if score < 0:
