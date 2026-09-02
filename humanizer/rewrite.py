@@ -368,7 +368,8 @@ class Humanizer:
         - 虚假互动结尾：删掉纯引流式的"你觉得呢？点赞关注"
         """
         # 1) emoji 装饰符号（🚀✅💡🔥⭐）直接去掉，避免被当"结构痕迹"
-        content = re.sub(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u{FE0F}]", "", content)
+        #    注意：re 不支持 \u{HEX} 花括号形式（那是 JS/PCRE 语法），只能用 \uXXXX / \UXXXXXXXX
+        content = re.sub(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", "", content)
 
         # 2) 破折号滥用：把大段 "——" 降级为逗号/句号
         #    保留单字破折号用于插入语，但替换 "……——X" 为 "：X"
