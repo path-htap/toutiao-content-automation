@@ -374,6 +374,9 @@ class Humanizer:
         #    保留单字破折号用于插入语，但替换 "……——X" 为 "：X"
         content = re.sub(r"([。！？])\s*——\s*", r"\1", content)
         content = re.sub(r"，\s*——\s*", "，", content)
+        #    无前导标点：把 "文字——文字" 中间的破折号换成逗号（Tier5 也会兜底，这里再收紧）
+        content = re.sub(r"([\u4e00-\u9fffA-Za-z0-9])\s*——\s*((?!——).)", r"\1，\2", content)
+        content = re.sub(r"——\s*", "，", content)
 
         # 3) 路标句：删除 "首先/其次/最后/综上" 类硬编号
         content = re.sub(r"^(首先|其次|再次|最后|综上|另外)[,，、:：]\s*", "", content)
