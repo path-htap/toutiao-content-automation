@@ -198,7 +198,8 @@ class AIGCChecker:
         优先复用与文章生成相同的 LLMClient；若其不可用，则直接 requests 调智谱 v4 接口兜底。
         """
         import re
-        prompt = LLM_JUDGE_PROMPT.format(content=content[:3000])  # 判定用文本上限，控制成本
+        # 用 str.replace 注入内容，避免内容里含 { } 时 .format() 抛 KeyError/IndexError
+        prompt = LLM_JUDGE_PROMPT.replace("{content}", content[:3000])
         text = ""
 
         # 方案 A：复用项目现有 LLMClient（保证 key/模型已配置可用）
